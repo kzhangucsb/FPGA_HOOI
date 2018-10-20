@@ -7,18 +7,15 @@
 //============================================================================
 
 //#include "ap_mem_if.h"
-#include "ap_fixed.h"
 
-#define _float ap_fixed<16, 1>
-#define numel_inner 200
-#define numel_outer 400
-#define numel_inner_batch 8
-#define dim 30
-#define dim2 5
+#include "type.h"
+
+
+#define numel_inner_batch 32
 
 void ttm(
-	_float ten[numel_inner*numel_outer*dim],
-	_float mat[dim*dim2],
+	const _float ten[numel_inner*numel_outer*dim],
+	const _float mat[dim*dim2],
 	_float res[numel_inner*numel_outer*dim2]
 	) {
 	// tensor-matrix multiply along dim-th dimension.
@@ -28,10 +25,13 @@ void ttm(
 	#pragma HLS ARRAY_RESHAPE   variable=mat cyclic factor=40
 	#pragma HLS ARRAY_RESHAPE   variable=ten cyclic factor=8 dim=0
 	#pragma HLS ARRAY_RESHAPE   variable=res cyclic factor=8 dim=0
+	#pragma HLS RESOURCE variable=mat core=RAM_1P_BRAM
+	#pragma HLS RESOURCE variable=ten core=RAM_1P_BRAM
+	#pragma HLS RESOURCE variable=res core=RAM_1P_BRAM
 
 	//short offset_o, offset_r;
 	_float res_tmp[numel_inner_batch][dim2];
-	#pragma HLS data_pack variable=res_tmp
+	#pragma HLS array_reshape variable=res_tmp complete dim=0
 	/*
 	for (int j = 0; j < numel_outer; j++) {
 		offset_r = j * numel_inner * dim2;
@@ -53,12 +53,12 @@ void ttm(
 				}
 			}
 			loop_dim:for (int k = 0; k < dim; k++) {
-			#pragma HLS pipeline
+			//#pragma HLS pipeline
 				//offset_o = j * numel_inner * dim + k * numel_inner;
 				//offset_r = j * numel_inner * dim2;
 
 				loop_interoffset:for (int io = 0; io < numel_inner_batch; io++) {
-				#pragma HLS UNROLL
+				#pragma HLS UNROLL factor=8
 					for (int t = 0; t < dim2; t++) {
 					#pragma HLS UNROLL
 						res_tmp[io][t]
@@ -69,7 +69,7 @@ void ttm(
 			loop_memcpy:for (int t = 0; t < dim2; t++) {
 			#pragma HLS pipeline
 				for (int io = 0; io < numel_inner_batch; io++) {
-				#pragma HLS UNROLL
+				#pragma HLS UNROLL factor=8
 					res[io + ib + t * numel_inner + j * numel_inner * dim2] =
 						res_tmp[io][t];
 				}
