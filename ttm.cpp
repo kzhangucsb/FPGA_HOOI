@@ -11,7 +11,7 @@
 #include "type.h"
 
 
-#define numel_inner_batch 32
+#define numel_inner_batch 8
 
 void ttm(
 	const _float ten[numel_inner*numel_outer*dim],
@@ -22,16 +22,17 @@ void ttm(
 	// ten:     pointer to the tensor. In shape numel_inner * dim * numel_outer.
 	// mat:     pointer to the matrix. Should be in shape dim2*dim
 	// res:  space to store multiplication result.In shape numel_inner * dim2 * numel_outer.
-	#pragma HLS ARRAY_RESHAPE   variable=mat cyclic factor=40
-	#pragma HLS ARRAY_RESHAPE   variable=ten cyclic factor=8 dim=0
-	#pragma HLS ARRAY_RESHAPE   variable=res cyclic factor=8 dim=0
+	#pragma HLS ARRAY_RESHAPE   variable=mat cyclic factor=5
+	#pragma HLS ARRAY_RESHAPE   variable=ten cyclic factor=8
+	#pragma HLS ARRAY_RESHAPE   variable=res cyclic factor=8
 	#pragma HLS RESOURCE variable=mat core=RAM_1P_BRAM
 	#pragma HLS RESOURCE variable=ten core=RAM_1P_BRAM
 	#pragma HLS RESOURCE variable=res core=RAM_1P_BRAM
 
 	//short offset_o, offset_r;
-	_float res_tmp[numel_inner_batch][dim2];
-	#pragma HLS array_reshape variable=res_tmp complete dim=0
+	_float res_tmp[numel_inner_batch*dim2];
+	#pragma HLS ARRAY_RESHAPE variable=res_tmp dim=0 complete
+	_float ten_tmp;
 	/*
 	for (int j = 0; j < numel_outer; j++) {
 		offset_r = j * numel_inner * dim2;
@@ -49,29 +50,28 @@ void ttm(
 			#pragma HLS UNROLL
 				for (int t = 0; t < dim2; t++) {
 				#pragma HLS UNROLL
-					res_tmp[i][t] = 0;
+					res_tmp[i*dim2+t] = 0;
 				}
 			}
 			loop_dim:for (int k = 0; k < dim; k++) {
-			//#pragma HLS pipeline
-				//offset_o = j * numel_inner * dim + k * numel_inner;
-				//offset_r = j * numel_inner * dim2;
-
+				#pragma HLS pipeline II=1
 				loop_interoffset:for (int io = 0; io < numel_inner_batch; io++) {
-				#pragma HLS UNROLL factor=8
+				//#pragma HLS UNROLL factor=8
+					ten_tmp = ten[io + ib + k*numel_inner + j*numel_inner*dim];
 					for (int t = 0; t < dim2; t++) {
 					#pragma HLS UNROLL
-						res_tmp[io][t]
-							+= ten[io + ib + j*numel_inner*dim + k*numel_inner] * mat[k*dim2 + t];
+						res_tmp[io*dim2+t]
+							+= ten_tmp * mat[k*dim2 + t];
 					}
 				}
 			}
 			loop_memcpy:for (int t = 0; t < dim2; t++) {
-			#pragma HLS pipeline
+			//#pragma HLS pipeline
 				for (int io = 0; io < numel_inner_batch; io++) {
-				#pragma HLS UNROLL factor=8
+				#pragma HLS UNROLL //factor=8
+				//#pragma HLS pipeline
 					res[io + ib + t * numel_inner + j * numel_inner * dim2] =
-						res_tmp[io][t];
+						res_tmp[io*dim2+t];
 				}
 			}
 		}
